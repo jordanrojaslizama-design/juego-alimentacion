@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Caza Nutrientes y Responde</title>
+<style>
+  body {
+    margin: 0; 
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(to bottom, #c9f7c3, #8bc34a);
+    overflow-x: hidden;
+  }
+  #gameCanvas {
+    background: #e3f2fd;
+    display: block;
+    margin: 20px auto;
+    border-radius: 15px;
+    border: 4px solid #4caf50;
+    box-shadow: 0 0 15px #388e3c;
+  }
+  #questionContainer {
+    max-width: 600px;
+    margin: 20px auto;
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 0 12px #2e7d32;
+    display: none;
+  }
+  #questionText {
+    font-size: 1.3em;
+    margin-bottom: 15px;
+    color: #2e7d32;
+  }
+  .optionBtn {
+    width: 100%;
+    text-align: left;
+    background-color: #81c784;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 15px;
+    margin: 8px 0;
+    font-size: 1.1em;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+  .optionBtn:hover {
+    background-color: #4caf50;
+  }
+  #scoreDisplay {
+    text-align: center;
+    font-size: 1.5em;
+    color: #1b5e20;
+    margin-top: 10px;
+  }
+  #startBtn {
+    display: block;
+    margin: 30px auto;
+    padding: 15px 40px;
+    font-size: 1.2em;
+    background-color: #388e3c;
+    color: white;
+    border: none;
+    border-radius: 15px;
+    cursor: pointer;
+    box-shadow: 0 4px 6px #2e7d32;
+    transition: background-color 0.3s ease;
+  }
+  #startBtn:hover {
+    background-color: #2e7d32;
+  }
+  #finalMessage {
+    text-align: center;
+    font-size: 1.5em;
+    margin-top: 20px;
+    color: #2e7d32;
+    font-weight: bold;
+  }
+  #instructions {
+    max-width: 600px;
+    margin: 15px auto;
+    text-align: center;
+    font-size: 1.1em;
+    color: #2e7d32;
+  }
+</style>
+</head>
+<body>
+
+<h1 style="text-align:center; color:#2e7d32; margin-top:20px;">Juego: Caza Nutrientes y Responde</h1>
+<p id="instructions">Mueve el plato con las flechas izquierda y derecha para atrapar los alimentos saludables y evitar los no saludables. Luego responde 7 preguntas para ganar puntos extra y aprender más sobre la anemia y la buena alimentación.</p>
+
+<canvas id="gameCanvas" width="650" height="450"></canvas>
+
+<div id="questionContainer">
+  <p id="questionText"></p>
+  <div id="optionsContainer"></div>
+</div>
+
+<div id="scoreDisplay"></div>
+<button id="startBtn">Comenzar Juego</button>
+<p id="finalMessage"></p>
+
+<script>
+// --- Carga imágenes ---
+const images = {};
+const imageSources = {
+  player: 'https://i.imgur.com/ZF6s192.png', // Plato
+  goodFoods: [
+    'https://i.imgur.com/IfHY2Hw.png', // Espinaca
+    'https://i.imgur.com/LEBqP3j.png', // Hígado
+    'https://i.imgur.com/IyeYJx7.png', // Naranja
+    'https://i.imgur.com/qSKArzq.png', // Lentejas
+    'https://i.imgur.com/KSAOcuK.png'  // Carne roja
+  ],
+  badFoods: [
+    'https://i.imgur.com/q1pq9i0.png', // Papas fritas
+    'https://i.imgur.com/4xnrgVY.png', // Galletas
+    'https://i.imgur.com/TJgWbFq.png'  // Refresco
+  ]
+};
+
+let loadedCount = 0;
+const totalImages = 1 + imageSources.goodFoods.length + imageSources.badFoods.length;
+
+function loadImages(callback) {
+  // Cargar jugador
+  images.player = new Image();
+  images.player.src = imageSources.player;
+  images.player.onload = () => {
+    loadedCount++;
+    if(loadedCount === totalImages) callback();
+  };
+
+  // Cargar buenos alimentos
+  images.goodFoods = [];
+  imageSources.goodFoods.forEach((src, i) => {
+    const img = new Image();
+    img.src = src;
+    img.onload = () => {
+      loadedCount++;
+      if(loadedCount === totalImages) callback();
+    };
+    images.goodFoods.push(img);
+  });
+
+  // Cargar malos alimentos
+  images.badFoods = [];
+  imageSources.badFoods.forEach((src, i) => {
+    const img = new Image();
+    img.src = src;
+    img.onload = () => {
+      loadedCount++;
+      if(loadedCount === totalImages) callback();
+    };
+    images.badFoods.push(img);
+  });
+}
+
+// --- Variables juego ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const player = {
+  x: canvas.width/2 - 40,
+  y: canvas.height - 80,
+  width: 80,
+  height: 80,
+  speed: 8,
+  dx: 0
+};
+
+class Food {
+  constructor(x, y, size, type, img) {
+    this.x = x;
+    this.y = y;
+    this.size = size;
+    this.type = type; // 'good' o 'bad'
+    this.img = img;
+    this.speed = 3 + Math.random() * 2;
+  }
+  draw() {
+    ctx.drawImage(this.img, this.x - this.size/2, this.y - this.size/2, this.size, this.size);
+  }
+  update() {
+    this.y += this.speed;
+    if(this.y > canvas.height + this.size) {
+      this.x = Math.random() * (canvas.width - this.size) + this.size/2;
+      this.y = -this.size;
+      this.speed = 3 + Math.random() * 2;
+    }
+  }
+}
+
+// Alimentos en pantalla
+const foods = [];
+const maxFoods = 8;
+
+// Crear alimentos
+function createFoods() {
+  foods.length = 0;
+  for(let i=0; i<maxFoods; i++) {
+    let type = i < 5 ? 'good' : 'bad'; // 5 buenos, 3 malos
+    let img = type === 'good' ? images.goodFoods[i] : images.badFoods[i - 5];
+    let x = Math.random() * (canvas.width - 60) + 30;
+    let y = Math.random() * -300;
+    foods.push(new Food(x, y, 60, type, img));
+  }
+}
+
+// Detectar colisión rectángulo (jugador) con círculo (comida)
+function collision(food, player) {
+  const distX = Math.abs(food.x - (player.x + player.width/2));
+  const distY = Math.abs(food.y - (player.y + player.height/2));
+
+  if (distX > (player.width/2 + food.size/2)) { return false; }
+  if (distY > (player.height/2 + food.size/2)) { return false; }
+
+  if (distX <= (player.width/2)) { return true; } 
+  if (distY <= (player.height/2)) { return true; }
+
+  const dx=distX-player.width/2;
+  const dy=distY-player.height/2;
+  return (dx*dx+dy*dy <= (food.size/2*food.size/2));
+}
+
+let score = 0;
+let gameActive = false;
+
+// Movimiento jugador
+function movePlayer() {
+  player.x += player.dx;
+  if(player.x < 0) player.x = 0;
+  if(player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+}
+
+function drawPlayer() {
+  ctx.drawImage(images.player, player.x, player.y, player.width, player.height);
+}
+
+function drawFoods() {
+  foods.forEach(food => food.draw());
+}
+
+function updateFoods() {
+  foods.forEach(food => {
+    food.update();
+    if(collision(food, player)) {
+      if(food.type === 'good') {
+        score += 10;
+      } else {
+        score -= 7;
+      }
+      // Reubicar comida arriba
+      food.y = -food.size;
+      food.x = Math.random() * (canvas.width - food.size) + food.size/2;
+    }
+  });
+}
+
+function drawScore() {
+  ctx.fillStyle = '#1b5e20';
+  ctx.font = '22px Verdana';
+  ctx.fillText(`Puntaje: ${score}`, 15, 30);
+}
+
+// Loop juego
+function gameLoop() {
+  if(!gameActive) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  movePlayer();
+  drawPlayer();
+  updateFoods();
+  drawFoods();
+  drawScore();
+
+  // Condición para terminar juego y pasar a preguntas
+  if(score >= 70 || score <= -20) {
+    gameActive = false;
+    startQuiz();
+  } else {
+    requestAnimationFrame(gameLoop);
+  }
+}
+
+// Control teclado
+function keyDownHandler(e) {
+  if(e.key === "ArrowRight" || e.key === "Right") {
+    player.dx = player.speed;
+  } else if(e.key === "ArrowLeft" || e.key === "Left") {
+    player.dx = -player.speed;
+  }
+}
+function keyUpHandler(e) {
+  if(e.key === "ArrowRight" || e.key === "Right") {
+    if(player.dx > 0) player.dx = 0;
+  } else if(e.key === "ArrowLeft" || e.key === "Left") {
+    if(player.dx < 0) player.dx = 0;
+  }
+}
+
+// --- Quiz ---
+const questionContainer = document.getElementById('questionContainer');
+const questionText = document.getElementById('questionText');
+const optionsContainer = document.getElementById('optionsContainer');
+const scoreDisplay = document.getElementById('scoreDisplay');
+const finalMessage = document.getElementById('finalMessage');
+const startBtn = document.getElementById('startBtn');
+
+const questions = [
+  {
+    question: "¿Qué vitamina ayuda a absorber mejor el hierro?",
+    options: ["Vitamina C", "Vitamina A", "Vitamina D"],
+    answer: "Vitamina C"
+  },
+  {
+    question: "¿Cuál alimento es rico en hierro?",
+    options: ["Espinaca", "Galletas", "Refresco"],
+    answer: "Espinaca"
+  },
+  {
+    question: "¿Qué síntoma puede indicar anemia?",
+    options: ["Cansancio constante", "Fiebre alta", "Dolor de garganta"],
+    answer: "Cansancio constante"
+  },
+  {
+    question: "¿Cuál es una buena práctica para prevenir la anemia?",
+    options: ["Comer frutas cítricas", "Solo comer pan", "Tomar refrescos"],
+    answer: "Comer frutas cítricas"
+  },
+  {
+    question: "¿Qué bebida favorece la absorción del hierro?",
+    options: ["Jugo de naranja", "Café", "Té negro"],
+    answer: "Jugo de naranja"
+  },
+  {
+    question: "¿Qué plato ayuda a prevenir la anemia?",
+    options: ["Lentejas con arroz", "Papas fritas", "Galletas dulces"],
+    answer: "Lentejas con arroz"
+  },
+  {
+    question: "¿Cuál alimento es fuente de hierro hemo?",
+    options: ["Carne roja", "Manzana", "Pan blanco"],
+    answer: "Carne roja"
+  }
+];
+
+let currentQuestionIndex = 0;
+let quizScore = 0;
+
+function startQuiz() {
+  canvas.style.display = "none";
+  questionContainer.style.display = "block";
+  startBtn.style.display = "none";
+  scoreDisplay.textContent = "";
+  finalMessage.textContent = "";
+  currentQuestionIndex = 0;
+  quizScore = 0;
+  showQuestion();
+}
+
+function showQuestion() {
+  const currentQ = questions[currentQuestionIndex];
+  questionText.textContent = currentQ.question;
+  optionsContainer.innerHTML = "";
+
+  currentQ.options.forEach(option => {
+    const btn = document.createElement('button');
+    btn.textContent = option;
+    btn.classList.add('optionBtn');
+    btn.onclick = () => selectAnswer(option);
+    optionsContainer.appendChild(btn);
+  });
+}
+
+function selectAnswer(selected) {
+  const currentQ = questions[currentQuestionIndex];
+  if(selected === currentQ.answer) {
+    quizScore += 15;
+  }
+  currentQuestionIndex++;
+  if(currentQuestionIndex < questions.length) {
+    showQuestion();
+  } else {
+    endGame();
+  }
+}
+
+function endGame(message) {
+  questionContainer.style.display = "none";
+  canvas.style.display = "none";
+  startBtn.style.display = "block";
+  scoreDisplay.textContent = "";
+  if(message) {
+    finalMessage.textContent = message;
+  }
+}
+
+// Mostrar resultado final y mensaje motivador
+function endGame() {
+  questionContainer.style.display = "none";
+  canvas.style.display = "none";
+  const totalPoints = score + quizScore;
+  scoreDisplay.textContent = `Puntaje total: ${totalPoints}`;
+
+  let msg = "";
+  if(totalPoints >= 140) {
+    msg = "¡Excelente! Eres un experto en buena alimentación y prevención de la anemia.";
+  } else if(totalPoints >= 80) {
+    msg = "¡Bien hecho! Con un poco más de práctica mejorarás aún más.";
+  } else {
+    msg = "No te rindas, sigue aprendiendo y mejorando tu alimentación.";
+  }
+
+  finalMessage.textContent = msg;
+  startBtn.style.display = "block";
+}
+
+// Iniciar juego
+startBtn.addEventListener('click', () => {
+  score = 0;
+  quizScore = 0;
+  finalMessage.textContent = "";
+  scoreDisplay.textContent = "";
+  questionContainer.style.display = "none";
+  canvas.style.display = "block";
+  createFoods();
+  gameActive = true;
+  gameLoop();
+});
+
+document.addEventListener("keydown", keyDownHandler);
+document.addEventListener("keyup", keyUpHandler);
+
+loadImages(() => {
+  startBtn.disabled = false;
+});
+</script>
+
+</body>
+</html>
